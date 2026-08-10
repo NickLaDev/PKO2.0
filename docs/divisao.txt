@@ -1,0 +1,238 @@
+====================================================================
+DIVISAO DO GRUPO E FLUXO NO GIT
+Projeto Pratico 1 - Redes (Tema 3 - Loteria)
+Grupo: Nicolas, Victor e Pedro
+====================================================================
+
+Ideia geral: eu (Nicolas) subo primeiro uma base funcionando na main.
+Com essa base no ar, cada um cria a sua branch, faz a sua parte sem
+depender de ninguem, e depois a gente junta tudo com merge.
+
+Dividimos por ARQUIVO e nao por "funcionalidade solta". Cada um e dono
+dos seus arquivos. Assim o merge nao da conflito, porque duas pessoas
+nao mexem na mesma linha.
+
+
+--------------------------------------------------------------------
+1. ESTRUTURA DO PROJETO E DE QUEM E CADA ARQUIVO
+--------------------------------------------------------------------
+
+  loteria/
+    comum.py       -> Nicolas (base). Depois de pronto ninguem mexe sem avisar.
+    estado.py      -> Nicolas (base). Memoria compartilhada + lock.
+    servidor.py    -> Nicolas (thread 1 do servidor)
+    sorteio.py     -> Victor  (thread 2 do servidor)
+    cliente.py     -> Pedro   (as duas threads do cliente)
+    protocolo.txt  -> de todo mundo, so muda avisando no grupo
+    divisao.txt    -> esse arquivo aqui
+    README.md      -> Pedro
+    .gitignore     -> Nicolas (base)
+
+Se der vontade de mexer em arquivo que nao e seu, PARA e fala no grupo
+primeiro. E aqui que grupo perde nota, na hora do merge zoado.
+
+
+--------------------------------------------------------------------
+2. ETAPA 0 - BASE NA MAIN (Nicolas, sozinho, antes de todo mundo)
+--------------------------------------------------------------------
+
+Isso aqui e o unico momento em que alguem commita direto na main.
+Enquanto eu nao terminar isso, ninguem comeca (ou comeca so lendo o
+protocolo.txt).
+
+O que vai na base:
+
+  [ ] criar o repositorio e o .gitignore (__pycache__, .venv, etc)
+  [ ] subir o protocolo.txt e o divisao.txt
+  [ ] comum.py:
+        - constantes: HOST, PORTA (5000), INTERVALO_SORTEIO,
+          INICIO_PADRAO=0, FIM_PADRAO=100, QTD_PADRAO=5
+        - agora()          -> devolve a hora formatada HH:MM:SS
+        - enviar_linha()   -> manda o texto ja com \n e encode utf-8
+        - ler_linhas()     -> generator em cima do makefile('r'),
+                              entrega uma linha por vez ja com strip
+  [ ] estado.py: a classe EstadoLoteria JA IMPLEMENTADA E FUNCIONANDO
+        - guarda a config (inicio, fim, qtd)
+        - guarda as apostas por cliente
+        - todo metodo entra e sai com o threading.Lock
+        - metodos: set_inicio, set_fim, set_qtd, get_config,
+          registrar_aposta, pegar_apostas_e_limpar,
+          adicionar_cliente, remover_cliente
+  [ ] servidor.py no minimo andando: socket, bind, listen, accept,
+      manda o "HH:MM:SS: CONECTADO!!" e ecoa de volta o que chegar.
+      Ja com SO_REUSEADDR ligado, senao a gente toma
+      "Address already in use" toda vez que reinicia.
+      Ja com a thread do sorteio sendo criada e chamando
+      sorteio.loop_sorteio(estado), mesmo que a funcao ainda nao faca
+      nada. Assim o Victor so precisa preencher, nao precisa mexer no
+      servidor.py.
+  [ ] sorteio.py com a funcao loop_sorteio(estado) vazia (so um pass)
+  [ ] cliente.py minimo: conecta, thread lendo teclado, thread lendo
+      socket, imprime na tela.
+  [ ] README.md so com "como rodar", o Pedro melhora depois
+
+O criterio pra dizer que a base ta pronta: subir o servidor num
+terminal, o cliente no outro, digitar qualquer coisa e ver voltar.
+Se isso funcionar, a base ta boa e eu aviso no grupo pra todo mundo
+comecar.
+
+
+--------------------------------------------------------------------
+3. AS BRANCHES
+--------------------------------------------------------------------
+
+Depois que a base estiver na main, cada um roda:
+
+  git checkout main
+  git pull
+  git checkout -b <nome-da-minha-branch>
+
+Branches:
+
+  Nicolas -> feature/servidor-thread1
+  Victor  -> feature/sorteio
+  Pedro   -> feature/cliente
+
+
+--------------------------------------------------------------------
+4. O QUE CADA UM FAZ NA SUA BRANCH
+--------------------------------------------------------------------
+
+....................................................................
+NICOLAS (eu) - branch feature/servidor-thread1
+arquivo: servidor.py
+....................................................................
+
+Peguei mais coisa porque tambem fiz a base e vou fechar a integracao
+no fim.
+
+  [ ] loop de leitura do socket usando o ler_linhas() do comum
+  [ ] separar o que e comando (comeca com ":") do que e aposta
+  [ ] interpretar :inicio, :fim, :qtd e :sair
+  [ ] validar comando: tem que ter numero inteiro, inicio menor que
+      fim, qtd nao pode ser maior que a quantidade de numeros do
+      intervalo
+  [ ] validar aposta: quantidade de numeros bate com a qtd, todos
+      dentro do intervalo, nenhum repetido
+  [ ] gravar a aposta no estado (usando os metodos do estado.py)
+  [ ] devolver todas as respostas de CONFIG OK, APOSTA REGISTRADA e
+      os ERRO exatamente como ta no protocolo.txt
+  [ ] tratar cliente que caiu sem derrubar o servidor
+  [ ] log no terminal do servidor (quem conectou, o que chegou)
+  [ ] depois dos merges: rodar a integracao final e arrumar o que
+      quebrar
+
+....................................................................
+VICTOR - branch feature/sorteio
+arquivo: sorteio.py
+....................................................................
+
+Voce nao precisa mexer em socket nenhum, o servidor.py ja vai chamar
+a sua funcao numa thread separada. Voce so recebe o estado e trabalha
+em cima dele.
+
+  [ ] loop_sorteio(estado): while True com o sleep do
+      INTERVALO_SORTEIO do comum.py
+  [ ] pegar a config vigente no estado na hora do sorteio
+  [ ] sortear os numeros com random.sample (sem repetir, ordenado)
+  [ ] pegar as apostas do ciclo e limpar a lista (usar o
+      pegar_apostas_e_limpar do estado, que ja faz isso dentro do
+      lock, atomico)
+  [ ] conferir aposta por aposta e contar os acertos
+  [ ] montar o bloco de resultado exatamente no formato do
+      protocolo.txt (secao 3.4), inclusive o caso de quem nao apostou
+  [ ] mandar o resultado pro cliente
+  [ ] recomecar o ciclo
+
+Da pra testar sem rede nenhuma: escreve um teste que cria um
+EstadoLoteria na mao, registra 2 ou 3 apostas e chama sua funcao de
+conferencia. Nao fica esperando o servidor ficar pronto.
+
+....................................................................
+PEDRO - branch feature/cliente
+arquivos: cliente.py e README.md
+....................................................................
+
+  [ ] thread 1: le do teclado e manda pro socket, em loop
+  [ ] thread 2: le do socket e imprime, em loop
+  [ ] reimprimir o prompt depois de cada mensagem que chega, senao a
+      thread 2 imprime no meio do que o cara ta digitando e embaralha
+      a tela
+  [ ] tratar o :sair fechando bonitinho
+  [ ] tratar Ctrl+C sem cuspir stack trace na tela
+  [ ] tratar servidor que caiu (avisar e sair, nao travar)
+  [ ] aceitar IP e porta por argumento na linha de comando, senao
+      testar em 3 maquinas vai ser um inferno
+  [ ] README.md: como instalar, como subir o servidor, como subir o
+      cliente, exemplos de comando
+  [ ] roteiro de teste: uma lista de casos pra gente passar antes de
+      entregar (aposta certa, aposta com numero fora, aposta com
+      numero repetido, aposta com quantidade errada, comando errado,
+      config no meio do ciclo, dois clientes ao mesmo tempo)
+
+Seu arquivo e o mais isolado de todos, entao voce consegue trabalhar
+desde o primeiro dia contra a base que eu subi.
+
+
+--------------------------------------------------------------------
+5. COMO A GENTE JUNTA (merge)
+--------------------------------------------------------------------
+
+Antes de pedir merge, TODO MUNDO faz isso pra nao empurrar conflito
+pro outro:
+
+  git checkout main
+  git pull
+  git checkout <minha-branch>
+  git merge main
+  (resolve se der conflito, testa se ainda roda)
+  git push
+
+Ordem que a gente combinou pra mergear:
+
+  1o  Pedro   (cliente.py, nao encosta em nada de ninguem, merge limpo)
+  2o  Victor  (sorteio.py, tambem isolado)
+  3o  Nicolas (servidor.py, e onde tudo se encontra)
+
+Depois do terceiro merge, todo mundo da git pull na main e a gente
+senta junto pra rodar a integracao completa. Bug de integracao a
+gente resolve junto, nao empurra pra um so.
+
+Regras que valem pra todo mundo:
+
+  - depois da base, ninguem commita direto na main. Sempre branch.
+  - commit pequeno e com mensagem que explica o que fez. Nada de
+    "update" ou "aaa".
+  - se mudou alguma coisa do protocolo.txt, avisa no grupo NA HORA.
+  - nunca commitar com o codigo quebrado na sua branch no fim do dia.
+
+
+--------------------------------------------------------------------
+6. MARCOS
+--------------------------------------------------------------------
+
+  [ ] M0 - os 3 lemos o protocolo.txt e concordamos com ele
+  [ ] M1 - base na main funcionando (Nicolas)
+  [ ] M2 - as 3 branches criadas e cada um com pelo menos 1 commit
+  [ ] M3 - cliente do Pedro conversando com a base
+  [ ] M4 - sorteio do Victor rodando isolado, testado sem rede
+  [ ] M5 - parser e validacao do servidor prontos (Nicolas)
+  [ ] M6 - os 3 merges feitos na main
+  [ ] M7 - teste com os 3 em maquinas diferentes na mesma rede
+           (fazer isso ANTES do ultimo dia, firewall e IP sempre
+           dao problema e a gente sempre descobre tarde)
+  [ ] M8 - INTERVALO_SORTEIO de volta pra 60 segundos
+  [ ] M9 - revisao cruzada: cada um explica o proprio codigo pros
+           outros dois. Se o professor perguntar da parte do colega
+           na apresentacao, ninguem pode travar.
+  [ ] M10 - entrega
+
+
+--------------------------------------------------------------------
+7. RESUMO EM UMA LINHA POR PESSOA
+--------------------------------------------------------------------
+
+  Nicolas -> base do projeto + thread 1 do servidor + integracao final
+  Victor  -> thread 2 do servidor (sorteio, conferencia e resultado)
+  Pedro   -> cliente inteiro (as 2 threads) + README + testes
+
