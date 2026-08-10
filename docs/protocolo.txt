@@ -1,0 +1,222 @@
+====================================================================
+PROTOCOLO DE COMUNICACAO - LOTERIA
+Projeto Pratico 1 - Redes (Tema 3)
+Grupo: Nicolas, Victor e Pedro (PKO2.0)
+====================================================================
+
+Esse arquivo aqui e o contrato entre o cliente e o servidor.
+Enquanto a gente estiver trabalhando em branch separada, e isso que
+garante que na hora do merge as duas pontas conversem.
+
+REGRA: se alguem precisar mudar alguma coisa aqui, avisa no grupo
+ANTES de mudar no codigo. Se mudar sozinho, quebra o lado do outro e
+so vamos descobrir na integracao.
+
+
+--------------------------------------------------------------------
+1. COMO A MENSAGEM TRAFEGA
+--------------------------------------------------------------------
+
+- TCP, socket normal (SOCK_STREAM).
+- Porta padrao: 5000. Da pra passar outra por argumento na linha de
+  comando, mas o default e 5000 pra todo mundo testar igual.
+- Tudo e texto puro, UTF-8.
+- TODA mensagem termina com \n. Sem excecao, nos dois sentidos.
+
+Sobre o \n: isso e importante e nao e frescura. TCP e um fluxo de
+bytes, ele NAO respeita fronteira de mensagem. Um recv() pode voltar
+com meia linha, ou com duas linhas grudadas, ou com uma linha e meia.
+Entao ninguem trata o retorno do recv() direto como se fosse uma
+mensagem inteira, senao vai dar bug estranho e dificil de achar.
+
+O jeito que a gente escolheu: usar sock.makefile('r') e ler linha por
+linha com um for. O Python ja monta o buffer sozinho e a gente nao
+precisa se preocupar. Isso ja esta pronto no comum.py (funcao
+ler_linhas), entao e so usar.
+
+
+--------------------------------------------------------------------
+2. CLIENTE -> SERVIDOR
+--------------------------------------------------------------------
+
+Sao so dois tipos de coisa que o cliente manda:
+
+  a) COMANDO   -> a linha comeca com ":"
+  b) APOSTA    -> a linha e so numero e espaco
+
+Comandos:
+
+  :inicio N     define o menor numero que pode sair no sorteio
+  :fim N        define o maior numero que pode sair no sorteio
+  :qtd N        define quantos numeros vao ser sorteados
+  :sair         fecha a conexao
+
+Exemplos:
+
+  :inicio 1
+  :fim 60
+  :qtd 6
+
+Aposta: os numeros separados por espaco, sem virgula, sem nada.
+
+  10 23 45 7 8 60
+
+Detalhes que a gente combinou:
+
+- Comando pode ser maiusculo ou minusculo, o servidor faz .lower()
+  antes de comparar. Entao :INICIO funciona igual :inicio.
+- Espaco sobrando no comeco, no fim ou no meio e ignorado
+  (a gente da um .split() que resolve).
+- Linha vazia o servidor ignora e nao responde nada.
+- O ":sair" nao esta na especificacao do professor, mas sem ele o
+  cliente so sai com Ctrl+C e fica feio na apresentacao. Colocamos.
+
+
+--------------------------------------------------------------------
+3. SERVIDOR -> CLIENTE
+--------------------------------------------------------------------
+
+3.1 - Mensagem de conexao (a MSG1 do diagrama)
+
+Assim que o accept() acontece, o servidor manda:
+
+  14:32:07: CONECTADO!!
+
+Essa aqui a gente deixou identica ao que esta escrito na
+especificacao ('<HORARIO>: CONECTADO!!'), sem colchete, porque foi o
+formato que o professor pediu ao pe da letra.
+
+Todas as OUTRAS mensagens usam colchete, fica mais facil de ler na
+tela quando as duas threads estao imprimindo junto:
+
+  [14:32:15] alguma coisa
+
+
+3.2 - Confirmacoes
+
+  [14:32:15] CONFIG OK: intervalo 1-60, 6 numeros por sorteio
+  [14:32:20] APOSTA REGISTRADA: 10 23 45 7 8 60
+
+Na confirmacao da aposta o servidor devolve os numeros ja ordenados,
+pra ficar mais facil do usuario conferir.
+
+
+3.3 - Erros
+
+Todo erro comeca com a palavra ERRO: depois do horario. Assim o
+cliente consegue destacar na tela se a gente quiser, e na hora de
+testar da pra procurar por "ERRO" no log.
+
+  [14:32:22] ERRO: comando desconhecido. Use :inicio, :fim, :qtd ou :sair
+  [14:32:23] ERRO: :qtd precisa de um numero inteiro
+  [14:32:24] ERRO: sua aposta tem 4 numeros, o sorteio e de 6
+  [14:32:25] ERRO: o numero 99 esta fora do intervalo (1-60)
+  [14:32:26] ERRO: numero repetido na aposta (23)
+  [14:32:27] ERRO: intervalo invalido, o inicio tem que ser menor que o fim
+  [14:32:28] ERRO: qtd maior que a quantidade de numeros do intervalo
+  [14:32:29] ERRO: nao entendi essa linha, manda um comando ou os numeros da aposta
+
+
+3.4 - Resultado do sorteio
+
+Vai como varias linhas, cada uma com seu \n no fim (nao e um bloco
+unico com \n no meio, isso quebraria o leitor de linha do cliente).
+
+  [14:33:00] ================ SORTEIO ================
+  [14:33:00] Numeros sorteados: 3 8 17 22 45 60
+  [14:33:00] Aposta #1: 7 8 10 23 45 60 -> 3 acerto(s): 8 45 60
+  [14:33:00] Aposta #2: 1 2 3 4 5 6 -> 2 acerto(s): 3 8
+  [14:33:00] Total: 2 aposta(s) nesse ciclo
+  [14:33:00] =========================================
+
+Se o cara nao apostou nada no ciclo:
+
+  [14:33:00] ================ SORTEIO ================
+  [14:33:00] Numeros sorteados: 3 8 17 22 45 60
+  [14:33:00] Voce nao apostou nesse ciclo
+  [14:33:00] =========================================
+
+Os numeros sorteados saem sempre ordenados e sem repetir (usamos
+random.sample). Os acertos tambem saem ordenados.
+
+
+--------------------------------------------------------------------
+4. CONFIGURACAO PADRAO E O CICLO
+--------------------------------------------------------------------
+
+- Se ninguem configurar nada, vale o que a especificacao mandou:
+  intervalo de 0 a 100, 5 numeros sorteados.
+- O sorteio acontece de 1 em 1 minuto (60 segundos), contando do
+  momento que o servidor sobe.
+- Depois do sorteio a lista de apostas e zerada e comeca ciclo novo.
+
+IMPORTANTE PRA NAO PERDER TEMPO TESTANDO:
+tem uma constante INTERVALO_SORTEIO la no comum.py. Durante o
+desenvolvimento deixa em 10 segundos, senao a gente vai passar a
+tarde inteira esperando 1 minuto a cada teste. NA HORA DE ENTREGAR,
+VOLTA PRA 60. Deixa isso anotado que a gente sempre esquece.
+
+
+--------------------------------------------------------------------
+5. DECISOES QUE A GENTE TEVE QUE TOMAR
+--------------------------------------------------------------------
+
+A especificacao nao fala dessas coisas, entao a gente decidiu e
+deixou escrito aqui pra todo mundo implementar igual:
+
+5.1 - "a config vale para a proxima aposta"
+Lemos ao pe da letra: assim que o servidor aceita um :inicio, :fim ou
+:qtd, a configuracao passa a valer NA HORA, ou seja, ja vale pra
+proxima aposta que chegar. O sorteio no fim do ciclo usa a
+configuracao que estiver valendo no momento do sorteio.
+As apostas que ja tinham sido registradas antes continuam na lista,
+a gente nao apaga nem invalida elas. Pode acontecer de uma aposta
+antiga ter numero fora do intervalo novo, tudo bem, ela so nao vai
+acertar aquele numero.
+
+5.2 - Numero repetido na aposta
+Nao pode. Se mandar "10 10 23" o servidor recusa a aposta inteira e
+devolve ERRO. Achamos mais coerente porque o sorteio tambem nao
+repete numero.
+
+5.3 - Quantas apostas por ciclo
+Quantas quiser. O usuario pode mandar varias apostas dentro do mesmo
+minuto e todas vao ser conferidas no sorteio. Por isso a numeracao
+"Aposta #1", "Aposta #2" no resultado.
+
+5.4 - Aposta invalida
+Recusa a aposta INTEIRA, nao aproveita os numeros validos. Devolve o
+erro e o usuario manda de novo.
+
+5.5 - Nome de usuario
+Isso e do tema do chat, nao do nosso. Ignora.
+
+5.6 - Cliente cai no meio
+O servidor tira ele da lista, escreve no log do terminal e continua
+rodando normal. Servidor nao pode morrer porque cliente caiu.
+
+5.7 - Fase 2
+A fase 1 e so 1 usuario, mas a gente ja guardou as apostas por
+cliente (dicionario cliente -> lista de apostas) em vez de uma lista
+solta. Custa quase nada agora e evita reescrever tudo quando o
+professor pedir multiusuario.
+
+
+--------------------------------------------------------------------
+6. PERGUNTAR PRO PROFESSOR
+--------------------------------------------------------------------
+
+- A configuracao vale pra proxima aposta mesmo (foi como entendemos)
+  ou vale so a partir do proximo sorteio?
+- Pode fazer mais de uma aposta no mesmo ciclo?
+- O sorteio pode repetir numero ou nunca repete?
+
+
+--------------------------------------------------------------------
+7. HISTORICO DE MUDANCA
+--------------------------------------------------------------------
+
+(quem mudar alguma coisa aqui, coloca a linha embaixo com a data e o
+nome, senao ninguem sabe o que mudou)
+
+- versao inicial, combinada entre os 3 antes de comecar a codar
