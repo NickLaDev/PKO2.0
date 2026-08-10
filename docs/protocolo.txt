@@ -201,6 +201,11 @@ cliente (dicionario cliente -> lista de apostas) em vez de uma lista
 solta. Custa quase nada agora e evita reescrever tudo quando o
 professor pedir multiusuario.
 
+5.8 - Cliente que nao apostou no ciclo
+O pegar_apostas_e_limpar devolve TODOS os clientes conectados, inclusive
+os que estao com lista vazia. As chaves nao somem, so as listas sao
+zeradas. E isso que permite mandar o "Voce nao apostou nesse ciclo" da
+secao 3.4 pra quem ficou parado.
 
 --------------------------------------------------------------------
 6. PERGUNTAR PRO PROFESSOR
